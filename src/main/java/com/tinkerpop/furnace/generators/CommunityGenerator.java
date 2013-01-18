@@ -1,5 +1,6 @@
 package com.tinkerpop.furnace.generators;
 
+import com.tinkerpop.blueprints.Direction;
 import com.tinkerpop.blueprints.Graph;
 import com.tinkerpop.blueprints.Vertex;
 
@@ -117,6 +118,7 @@ public class CommunityGenerator extends AbstractGenerator {
      * @param expectedNumEdges
      * @return The actual number of edges generated. May be different from the expected number.
      */
+    @SuppressWarnings("unchecked")
     public int generate(Graph graph, Iterable<Vertex> vertices, int expectedNumCommunities, int expectedNumEdges) {
         if (communitySize==null) throw new IllegalStateException("Need to initialize community size distribution");
         if (edgeDegree==null) throw new IllegalStateException("Need to initialize degree distribution");
@@ -141,33 +143,52 @@ public class CommunityGenerator extends AbstractGenerator {
         int addedEdges = 0;
         
         //System.out.println("Generating links on communities: "+communities.size());
-
+        
         for (ArrayList<Vertex> community : communities) {
             for (Vertex v : community) {
                 int degree = degreeDist.nextValue(random);
                 degree = Math.min(degree,(int)Math.ceil((community.size() - 1) / inCommunityPercentage)-1);
                 Set<Vertex> inlinks = new HashSet<Vertex>();
                 Set<Vertex> outlinks = new HashSet<Vertex>();
+                // UNDRIECTED START
+                for (Vertex u: v.getVertices(Direction.BOTH)) {
+                    inlinks.add(u);
+                    outlinks.add(u);
+                }
+                // UNDIRECTED END
                 for (int i=0;i<degree;i++) {
                     Vertex selected = null;
                     if (random.nextDouble()<crossCommunityPercentage || (community.size()-1<=inlinks.size()) ) {
                         //Cross community
+                        ArrayList<ArrayList<Vertex>> _communities = (ArrayList<ArrayList<Vertex>>) communities.clone();
+                        _communities.remove(community);
                         ArrayList<Vertex> othercomm = null;
                         while (selected == null) {
-                            while (othercomm==null) {
-                                othercomm = communities.get(random.nextInt(communities.size()));
-                                if (othercomm.equals(community)) othercomm=null;
+                            othercomm = _communities.get(random.nextInt(_communities.size()));
+                            ArrayList<Vertex> other = (ArrayList<Vertex>) othercomm.clone();
+                            other.removeAll(outlinks);
+                            if (other.size() == 0) {
+                                selected = null;
+                                _communities.remove(othercomm);
+                                if (_communities.size() == 0) {
+                                    System.err.println("BROT FÜR DUMME");
+                                    System.exit(1);
+                                }
+                            } else {
+                                selected  = othercomm.get(random.nextInt(othercomm.size()));
                             }
-                            selected = othercomm.get(random.nextInt(othercomm.size()));
-                            if (outlinks.contains(selected)) selected = null;
                         }
                         outlinks.add(selected);
                     } else {
                         //In community
-                        while (selected==null) {
-                            selected=community.get(random.nextInt(community.size()));
-                            if (v.equals(selected) || inlinks.contains(selected)) selected=null;
+                        ArrayList<Vertex> own = (ArrayList<Vertex>) community.clone();
+                        own.removeAll(inlinks);
+                        own.remove(v);
+                        if (own.size() == 0) {
+                            System.err.println("BROT FÜR DUMME");
+                            System.exit(1);
                         }
+                        selected = own.get(random.nextInt(own.size()));
                         inlinks.add(selected);
                     }
                     addEdge(graph,v,selected);
